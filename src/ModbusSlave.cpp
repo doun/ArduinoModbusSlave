@@ -148,7 +148,7 @@ int Modbus::poll() {
     // check unit-id
     //0x00 for broadcast
     if (bufIn[0] != unitID || bufIn[0] != 0x00) {
-        Log.notice("Wrong ID, got:%d", bufIn[0]);
+        Log.notice("Wrong ID, got:%d, now is %d" CR, bufIn[0], unitID);
         return 0;
     }
 
