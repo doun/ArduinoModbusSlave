@@ -17,7 +17,6 @@
 
 #include <assert.h>
 #include <string.h>
-#include <ArduinoLog.h>
 #include "ModbusSlave.h"
 
 /**
@@ -27,8 +26,9 @@
  * @param ctrlPin the digital out pin for RS485 read/write control.
  */
 Modbus::Modbus(uint8_t _unitID, int _ctrlPin)
-:Modbus(Serial, _unitID, _ctrlPin)
-{}
+    : Modbus(Serial, _unitID, _ctrlPin)
+{
+}
 
 /**
  * Init the modbus object.
@@ -38,7 +38,7 @@ Modbus::Modbus(uint8_t _unitID, int _ctrlPin)
  * @param ctrlPin the digital out pin for RS485 read/write control.
  */
 Modbus::Modbus(Stream &_serial, uint8_t _unitID, int _ctrlPin)
-:serial(_serial)
+    : serial(_serial)
 {
     // set modbus slave unit id
     unitID = _unitID;
@@ -57,9 +57,11 @@ Modbus::Modbus(Stream &_serial, uint8_t _unitID, int _ctrlPin)
  *
  * @param boud the serial port boud rate.
  */
-void Modbus::begin(unsigned long baud) {
+void Modbus::begin(unsigned long baud)
+{
     // set control pin
-    if (ctrlPin >= 0) {
+    if (ctrlPin >= 0)
+    {
         pinMode(ctrlPin, OUTPUT);
     }
 
@@ -67,10 +69,12 @@ void Modbus::begin(unsigned long baud) {
     serial.setTimeout(0);
 
     // set the T35 interframe timeout
-    if (baud > 19200) {
+    if (baud > 19200)
+    {
         timeout = 1750;
     }
-    else {
+    else
+    {
         timeout = 35000000 / baud; // 1T * 3.5 = T3.5
     }
 
@@ -87,20 +91,24 @@ void Modbus::begin(unsigned long baud) {
  *
  * @return the calculated CRC16.
  */
-uint16_t Modbus::calcCRC(uint8_t *buf, int length) {
+uint16_t Modbus::calcCRC(uint8_t *buf, int length)
+{
     int i, j;
     uint16_t crc = 0xFFFF;
     uint16_t tmp;
 
     // calculate crc16
-    for (i = 0; i < length; i++) {
+    for (i = 0; i < length; i++)
+    {
         crc = crc ^ buf[i];
 
-        for (j = 0; j < 8; j++) {
+        for (j = 0; j < 8; j++)
+        {
             tmp = crc & 0x0001;
             crc = crc >> 1;
-            if (tmp) {
-              crc = crc ^ 0xA001;
+            if (tmp)
+            {
+                crc = crc ^ 0xA001;
             }
         }
     }
@@ -111,7 +119,8 @@ uint16_t Modbus::calcCRC(uint8_t *buf, int length) {
 /**
  * wait for end of frame, parse request and answer it.
  */
-int Modbus::poll() {
+int Modbus::poll()
+{
     int lengthOut = 0;
     uint16_t crc;
     uint16_t address;
@@ -127,33 +136,38 @@ int Modbus::poll() {
      */
 
     // check if we have data in buffer.
-    available_len = serial.available( );
-    if ( available_len > 0 ) {
+    available_len = serial.available();
+    if (available_len > 0)
+    {
         // old data is too old
-        if ( micros( ) > ( last_receive_time + timeout ) ) {
+        if (micros() > (last_receive_time + timeout))
+        {
             lengthIn = 0;
         }
 
         // we waited for the inter-frame timeout, read the frame.
-        lengthIn += serial.readBytes( bufIn + lengthIn, MAX_BUFFER - lengthIn );
-        last_receive_time = micros( );
+        lengthIn += serial.readBytes(bufIn + lengthIn, MAX_BUFFER - lengthIn);
+        last_receive_time = micros();
     }
-    else {
+    else
+    {
         return 0;
     }
 
-    
-    
     // check unit-id
     //0x00 for broadcast
-    if (bufIn[0] != unitID || bufIn[0] != 0x00) return 0;
+    if ((bufIn[0] | 0x00) - unitID != 0)
+    {
+        return 0;
+    }
 
     /**
      * Validate buffer.
      */
     // check minimum length.
-    if (lengthIn < 8) return 0;
-    
+    if (lengthIn < 8)
+        return 0;
+
     /**
      * Get the Function code.
      */
@@ -168,199 +182,230 @@ int Modbus::poll() {
     /**
      * Output length sanity check, and remove trailing noise from message.
      */
-    switch (fc) {
-        case FC_READ_COILS: // read coils (digital out state)
-        case FC_READ_DISCRETE_INPUT: // read input state (digital in)
-        case FC_READ_HOLDING_REGISTERS: // read holding registers (analog out state)
-        case FC_READ_INPUT_REGISTERS: // read input registers (analog in)
-            // sanity check.
-            if (length > MAX_BUFFER) {
-                error = STATUS_ILLEGAL_DATA_ADDRESS;
-                // as long as I am not using gotos at all 
-                // in case of protocol handling they are usefull for 
-                // cleaning up when it comes to cleaning up
-                // when something goes wrong while processing
-                // instead og goto same can be implemented as nested
-                // if statements
-                goto respond;
-            }
-
-            // ignore tailing nulls.
-            lengthIn = 8;
-
-            break;
-        case FC_WRITE_COIL:
-            // ignore tailing nulls.
-            lengthIn = 8;
-
-            break;
-        case FC_WRITE_REGISTER:
-            // ignore tailing nulls.
-            lengthIn = 8;
-
-            break;
-        case FC_WRITE_MULTIPLE_COILS:
-            // sanity check.
-            if (length > MAX_BUFFER) {
-                error = STATUS_ILLEGAL_DATA_ADDRESS;
-                // as long as I am not using gotos at all 
-                // in case of protocol handling they are usefull for 
-                // cleaning up when it comes to cleaning up
-                // when something goes wrong while processing
-                // instead og goto same can be implemented as nested
-                // if statements
-                goto respond;
-            }
-
-            // check buffer in size.
-            if (lengthIn < (int)(7 + (length + 7) / 8 + 2)) return 0;
-
-            // ignore tailing nulls.
-            lengthIn = (int)(7 + (length + 7) / 8 + 2);
-
-            break;
-        case FC_WRITE_MULTIPLE_REGISTERS:
-            // sanity check.
-            if (length > MAX_BUFFER) {
-                error = STATUS_ILLEGAL_DATA_ADDRESS;
-                goto respond;
-            }
-
-            // check buffer in size.
-            if (lengthIn < (int)(7 + length * 2 + 2)) return 0;
-
-            // ignore tailing nulls.
-            lengthIn = (int)(7 + length * 2 + 2);
-
-            break;
-        default:
-            // unknown command
-            // TODO respond with exeption 01 (illegal function)
-            error = STATUS_ILLEGAL_FUNCTION;
+    switch (fc)
+    {
+    case FC_READ_COILS:             // read coils (digital out state)
+    case FC_READ_DISCRETE_INPUT:    // read input state (digital in)
+    case FC_READ_HOLDING_REGISTERS: // read holding registers (analog out state)
+    case FC_READ_INPUT_REGISTERS:   // read input registers (analog in)
+        // sanity check.
+        if (length > MAX_BUFFER)
+        {
+            error = STATUS_ILLEGAL_DATA_ADDRESS;
+            // as long as I am not using gotos at all
+            // in case of protocol handling they are usefull for
+            // cleaning up when it comes to cleaning up
+            // when something goes wrong while processing
+            // instead og goto same can be implemented as nested
+            // if statements
             goto respond;
+        }
+
+        // ignore tailing nulls.
+        lengthIn = 8;
+
+        break;
+    case FC_WRITE_COIL:
+        // ignore tailing nulls.
+        lengthIn = 8;
+
+        break;
+    case FC_WRITE_REGISTER:
+        // ignore tailing nulls.
+        lengthIn = 8;
+
+        break;
+    case FC_WRITE_MULTIPLE_COILS:
+        // sanity check.
+        if (length > MAX_BUFFER)
+        {
+            error = STATUS_ILLEGAL_DATA_ADDRESS;
+            // as long as I am not using gotos at all
+            // in case of protocol handling they are usefull for
+            // cleaning up when it comes to cleaning up
+            // when something goes wrong while processing
+            // instead og goto same can be implemented as nested
+            // if statements
+            goto respond;
+        }
+
+        // check buffer in size.
+        if (lengthIn < (int)(7 + (length + 7) / 8 + 2))
+            return 0;
+
+        // ignore tailing nulls.
+        lengthIn = (int)(7 + (length + 7) / 8 + 2);
+
+        break;
+    case FC_WRITE_MULTIPLE_REGISTERS:
+        // sanity check.
+        if (length > MAX_BUFFER)
+        {
+            error = STATUS_ILLEGAL_DATA_ADDRESS;
+            goto respond;
+        }
+
+        // check buffer in size.
+        if (lengthIn < (int)(7 + length * 2 + 2))
+            return 0;
+
+        // ignore tailing nulls.
+        lengthIn = (int)(7 + length * 2 + 2);
+
+        break;
+    default:
+        // unknown command
+        // TODO respond with exeption 01 (illegal function)
+        error = STATUS_ILLEGAL_FUNCTION;
+        goto respond;
     }
 
     // check crc.
     crc = word(bufIn[lengthIn - 1], bufIn[lengthIn - 2]);
-    if (calcCRC(bufIn, lengthIn - 2) != crc) {
+    if (calcCRC(bufIn, lengthIn - 2) != crc)
+    {
         // standard modbus doesn't respond in case of
         // crc error
         return 0;
     }
-    
+
     /**
      * Parse command
      */
     cb_status = STATUS_OK;
 
-    switch (fc) {
-        case FC_READ_COILS: // read coils (digital out state)
-        case FC_READ_DISCRETE_INPUT: // read input state (digital in)
-            // build valid empty answer.
-            lengthOut = 3 + (length - 1) / 8 + 1 + 2;
-            bufOut[2] = (length - 1) / 8 + 1;
+    switch (fc)
+    {
+    case FC_READ_COILS:          // read coils (digital out state)
+    case FC_READ_DISCRETE_INPUT: // read input state (digital in)
+        // build valid empty answer.
+        lengthOut = 3 + (length - 1) / 8 + 1 + 2;
+        bufOut[2] = (length - 1) / 8 + 1;
 
-            // clear data out.
-            memset(bufOut + 3, 0, bufOut[2]);
+        // clear data out.
+        memset(bufOut + 3, 0, bufOut[2]);
 
-            // if we have uset callback.
-            cb_index = fc == FC_READ_COILS ? CB_READ_COILS : CB_READ_DISCRETE_INPUTS;
-            
-            if (cbVector[cb_index]) {
-                cb_status = cbVector[cb_index](fc, address, length);
-            } else {
-                cb_status = STATUS_ILLEGAL_FUNCTION;
-            }
-            break;
-        case FC_READ_HOLDING_REGISTERS: // read holding registers (analog out state)
-        case FC_READ_INPUT_REGISTERS: // read input registers (analog in)
-            // build valid empty answer.
-            lengthOut = 3 + 2 * length + 2;
-            bufOut[2] = 2 * length;
+        // if we have uset callback.
+        cb_index = fc == FC_READ_COILS ? CB_READ_COILS : CB_READ_DISCRETE_INPUTS;
 
-            // clear data out.
-            memset(bufOut + 3, 0, bufOut[2]);
+        if (cbVector[cb_index])
+        {
+            cb_status = cbVector[cb_index](fc, address, length);
+        }
+        else
+        {
+            cb_status = STATUS_ILLEGAL_FUNCTION;
+        }
+        break;
+    case FC_READ_HOLDING_REGISTERS: // read holding registers (analog out state)
+    case FC_READ_INPUT_REGISTERS:   // read input registers (analog in)
+        // build valid empty answer.
+        lengthOut = 3 + 2 * length + 2;
+        bufOut[2] = 2 * length;
 
-            // if we have uset callback.
-            cb_index = fc == FC_READ_HOLDING_REGISTERS ? CB_READ_HOLDING_REGISTERS : CB_READ_INPUT_REGISTERS;
-            
-            if (cbVector[cb_index]) {
-                cb_status = cbVector[cb_index](fc, address, length);
-            } else {
-                cb_status = STATUS_ILLEGAL_FUNCTION;
-            }
-            break;
-        case FC_WRITE_COIL: // write one coil (digital out)
-            // build valid empty answer.
-            lengthOut = 8;
-            memcpy(bufOut + 2, bufIn + 2, 4);
+        // clear data out.
+        memset(bufOut + 3, 0, bufOut[2]);
 
-            // if we have uset callback.
-            if (cbVector[CB_WRITE_COILS]) {
-                cb_status = cbVector[CB_WRITE_COILS](fc, address, 1);
-            } else {
-                cb_status = STATUS_ILLEGAL_FUNCTION;
-            }
+        // if we have uset callback.
+        cb_index = fc == FC_READ_HOLDING_REGISTERS ? CB_READ_HOLDING_REGISTERS : CB_READ_INPUT_REGISTERS;
 
-            break;
-        case FC_WRITE_REGISTER:
-            // build valid empty answer.
-            lengthOut = 8;
-            memcpy(bufOut + 2, bufIn + 2, 4);
+        if (cbVector[cb_index])
+        {
+            cb_status = cbVector[cb_index](fc, address, length);
+        }
+        else
+        {
+            cb_status = STATUS_ILLEGAL_FUNCTION;
+        }
+        break;
+    case FC_WRITE_COIL: // write one coil (digital out)
+        // build valid empty answer.
+        lengthOut = 8;
+        memcpy(bufOut + 2, bufIn + 2, 4);
 
-            // if we have uset callback
-            if (cbVector[CB_WRITE_HOLDING_REGISTERS]) {
-                cb_status = cbVector[CB_WRITE_HOLDING_REGISTERS](fc, address, 1);
-            } else {
-                cb_status = STATUS_ILLEGAL_FUNCTION;
-            }
+        // if we have uset callback.
+        if (cbVector[CB_WRITE_COILS])
+        {
+            cb_status = cbVector[CB_WRITE_COILS](fc, address, 1);
+        }
+        else
+        {
+            cb_status = STATUS_ILLEGAL_FUNCTION;
+        }
 
-            break;
-        case FC_WRITE_MULTIPLE_COILS: // write coils (digital out)
-            // build valid empty answer.
-            lengthOut = 8;
-            memcpy(bufOut + 2, bufIn + 2, 4);
+        break;
+    case FC_WRITE_REGISTER:
+        // build valid empty answer.
+        lengthOut = 8;
+        memcpy(bufOut + 2, bufIn + 2, 4);
 
-            // if we have uset callback.
-            if (cbVector[CB_WRITE_COILS]) {
-                cb_status = cbVector[CB_WRITE_COILS](fc, address, length);
-            } else {
-                cb_status = STATUS_ILLEGAL_FUNCTION;
-            }
+        // if we have uset callback
+        if (cbVector[CB_WRITE_HOLDING_REGISTERS])
+        {
+            cb_status = cbVector[CB_WRITE_HOLDING_REGISTERS](fc, address, 1);
+        }
+        else
+        {
+            cb_status = STATUS_ILLEGAL_FUNCTION;
+        }
 
-            break;
-        case FC_WRITE_MULTIPLE_REGISTERS: // write holding registers (analog out)
-            // build valid empty answer.
-            lengthOut = 8;
-            memcpy(bufOut + 2, bufIn + 2, 4);
+        break;
+    case FC_WRITE_MULTIPLE_COILS: // write coils (digital out)
+        // build valid empty answer.
+        lengthOut = 8;
+        memcpy(bufOut + 2, bufIn + 2, 4);
 
-            // if we have uset callback
-            if (cbVector[CB_WRITE_HOLDING_REGISTERS]) {
-                cb_status = cbVector[CB_WRITE_HOLDING_REGISTERS](fc, address, length);
-            } else {
-                cb_status = STATUS_ILLEGAL_FUNCTION;
-            }
+        // if we have uset callback.
+        if (cbVector[CB_WRITE_COILS])
+        {
+            cb_status = cbVector[CB_WRITE_COILS](fc, address, length);
+        }
+        else
+        {
+            cb_status = STATUS_ILLEGAL_FUNCTION;
+        }
 
-            break;
+        break;
+    case FC_WRITE_MULTIPLE_REGISTERS: // write holding registers (analog out)
+        // build valid empty answer.
+        lengthOut = 8;
+        memcpy(bufOut + 2, bufIn + 2, 4);
+
+        // if we have uset callback
+        if (cbVector[CB_WRITE_HOLDING_REGISTERS])
+        {
+            cb_status = cbVector[CB_WRITE_HOLDING_REGISTERS](fc, address, length);
+        }
+        else
+        {
+            cb_status = STATUS_ILLEGAL_FUNCTION;
+        }
+
+        break;
     }
-    
-    respond:
 
-    if(bufIn[0] == 0x00){
+respond:
+
+    if (bufIn[0] == 0x00)
+    {
         //broadcast, do not send response
         return STATUS_OK;
     }
+    lengthIn = 0;
     /**
      * Build answer
      */
     bufOut[0] = unitID;
     bufOut[1] = fc;
-    
-    if (error != STATUS_OK) { // error code should have higher priotity over callback
+
+    if (error != STATUS_OK)
+    { // error code should have higher priotity over callback
         bufOut[1] |= 0x80;
         bufOut[2] = error;
         lengthOut = 5;
-    } else if (cb_status != STATUS_OK) {
+    }
+    else if (cb_status != STATUS_OK)
+    {
         bufOut[1] |= 0x80;
         bufOut[2] = cb_status;
         lengthOut = 5;
@@ -370,11 +415,12 @@ int Modbus::poll() {
     crc = calcCRC(bufOut, lengthOut - 2);
     bufOut[lengthOut - 2] = crc & 0xff;
     bufOut[lengthOut - 1] = crc >> 8;
-    
+
     /**
      * Transmit
      */
-    if (ctrlPin >= 0) {
+    if (ctrlPin >= 0)
+    {
         // set rs485 control pin to write
         digitalWrite(ctrlPin, HIGH);
 
@@ -386,7 +432,9 @@ int Modbus::poll() {
         // [ on SoftwareSerial use delay ? ]
         serial.flush();
         digitalWrite(ctrlPin, LOW);
-    } else {
+    }
+    else
+    {
         // just send the buffer.
         serial.write(bufOut, lengthOut);
     }
@@ -400,10 +448,12 @@ int Modbus::poll() {
  * @param offset the coil offset from first coil in this buffer.
  * @return the coil state from buffer (true / false)
  */
-int Modbus::readCoilFromBuffer(int offset) {
-    if (bufIn[1] == FC_WRITE_COIL) {
-       assert(offset == 0);
-       return word(bufIn[4], bufIn[5]) == COIL_ON;
+int Modbus::readCoilFromBuffer(int offset)
+{
+    if (bufIn[1] == FC_WRITE_COIL)
+    {
+        assert(offset == 0);
+        return word(bufIn[4], bufIn[5]) == COIL_ON;
     }
 
     assert(bufIn[1] == FC_WRITE_MULTIPLE_COILS);
@@ -420,10 +470,12 @@ int Modbus::readCoilFromBuffer(int offset) {
  * @param offset the register offset from first register in this buffer.
  * @return the register value from buffer.
  */
-uint16_t Modbus::readRegisterFromBuffer(int offset) {
-    if (bufIn[1] == FC_WRITE_REGISTER) {
-       assert(offset == 0);
-       return word(bufIn[4], bufIn[5]);
+uint16_t Modbus::readRegisterFromBuffer(int offset)
+{
+    if (bufIn[1] == FC_WRITE_REGISTER)
+    {
+        assert(offset == 0);
+        return word(bufIn[4], bufIn[5]);
     }
 
     assert(bufIn[1] == FC_WRITE_MULTIPLE_REGISTERS);
@@ -439,13 +491,17 @@ uint16_t Modbus::readRegisterFromBuffer(int offset) {
  * @param offset the coil offset from first coil in this buffer.
  * @param state the coil state to write into buffer (true / false)
  */
-void Modbus::writeCoilToBuffer(int offset, int state) {
+void Modbus::writeCoilToBuffer(int offset, int state)
+{
     int address = 3 + offset / 8;
     int bit = offset % 8;
 
-    if (state == HIGH) {
+    if (state == HIGH)
+    {
         bitSet(bufOut[address], bit);
-    } else {
+    }
+    else
+    {
         bitClear(bufOut[address], bit);
     }
 }
@@ -456,7 +512,8 @@ void Modbus::writeCoilToBuffer(int offset, int state) {
  * @param offset the register offset from first register in this buffer.
  * @param value the register value to write into buffer.
  */
-void Modbus::writeRegisterToBuffer(int offset, uint16_t value) {
+void Modbus::writeRegisterToBuffer(int offset, uint16_t value)
+{
     int address = 3 + offset * 2;
 
     bufOut[address] = value >> 8;
@@ -472,12 +529,14 @@ void Modbus::writeRegisterToBuffer(int offset, uint16_t value) {
  * @return STATUS_OK in case of success, STATUS_ILLEGAL_DATA_ADDRESS
  *      if data doesn't fit in buffer
  */
-uint8_t Modbus::writeStringToBuffer(int offset, uint8_t *str, uint8_t length) {
+uint8_t Modbus::writeStringToBuffer(int offset, uint8_t *str, uint8_t length)
+{
     int address = 3 + offset * 2;
 
     // check string length.
-    // MAX_BUFFER-2 because we ned two bytes for crc. 
-    if ((address + length) >= MAX_BUFFER-2) return STATUS_ILLEGAL_DATA_ADDRESS;
+    // MAX_BUFFER-2 because we ned two bytes for crc.
+    if ((address + length) >= MAX_BUFFER - 2)
+        return STATUS_ILLEGAL_DATA_ADDRESS;
 
     memcpy(bufOut + address, str, length);
     return STATUS_OK;

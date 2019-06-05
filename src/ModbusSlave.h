@@ -82,6 +82,7 @@ public:
     void writeRegisterToBuffer(int offset, uint16_t value);
     uint8_t writeStringToBuffer(int offset, uint8_t *str, uint8_t length);
 
+    uint8_t unitID;
     CallBackFunc cbVector[CB_MAX];
 private:
     Stream &serial;
@@ -90,7 +91,6 @@ private:
     uint16_t calcCRC(uint8_t *buf, int length);
 
     int ctrlPin = -1;
-    uint8_t unitID;
     uint8_t lengthIn;
     uint8_t bufIn[MAX_BUFFER];
     uint8_t bufOut[MAX_BUFFER];
