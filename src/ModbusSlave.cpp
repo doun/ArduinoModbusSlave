@@ -17,6 +17,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <ArduinoLog.h>
 #include "ModbusSlave.h"
 
 /**
@@ -144,7 +145,8 @@ int Modbus::poll() {
     
     
     // check unit-id
-    if (bufIn[0] != unitID) return 0;
+    //0x00 for broadcast
+    if (bufIn[0] != unitID || bufIn[0] != 0x00) return 0;
 
     /**
      * Validate buffer.
@@ -343,6 +345,11 @@ int Modbus::poll() {
     }
     
     respond:
+
+    if(bufIn[0] == 0x00){
+        //broadcast, do not send response
+        return STATUS_OK;
+    }
     /**
      * Build answer
      */
