@@ -131,7 +131,7 @@ int Modbus::poll() {
     if ( available_len > 0 ) {
         // old data is too old
         if ( micros( ) > ( last_receive_time + timeout ) ) {
-            Log.trace("discarding input, length is %d", lengthIn, bufIn);
+            Log.trace("discarding input, length is %d" CR, lengthIn, bufIn);
             lengthIn = 0;
         }
 
