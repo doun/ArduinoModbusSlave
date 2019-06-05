@@ -17,7 +17,6 @@
 
 #include <assert.h>
 #include <string.h>
-#include <ArduinoLog.h>
 #include "ModbusSlave.h"
 
 /**
@@ -143,7 +142,6 @@ int Modbus::poll()
         // old data is too old
         if (micros() > (last_receive_time + timeout))
         {
-            Log.trace("discarding input, length is %d" CR, lengthIn, bufIn);
             lengthIn = 0;
         }
 
@@ -160,7 +158,6 @@ int Modbus::poll()
     //0x00 for broadcast
     if ((bufIn[0] | 0x00) - unitID != 0)
     {
-        Log.notice("Wrong ID, got:%d" CR, bufIn[0]|0x00==unitID);
         return 0;
     }
 
