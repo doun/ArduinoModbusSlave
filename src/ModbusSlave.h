@@ -86,6 +86,7 @@ public:
 private:
     Stream &serial;
     uint32_t timeout;
+    uint32_t expectIn;
     uint32_t last_receive_time;
     uint16_t calcCRC(uint8_t *buf, int length);
 
